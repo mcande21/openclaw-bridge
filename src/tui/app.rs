@@ -67,7 +67,7 @@ pub struct ChatMessage {
 }
 
 impl ChatMessage {
-    /// Create a message from the human operator typing in the TUI (User).
+    /// Create a message from the human operator typing in the TUI.
     pub fn operator(content: impl Into<String>) -> Self {
         Self {
             role: MessageRole::Operator,

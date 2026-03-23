@@ -385,6 +385,15 @@ fn handle_ws_event(
         }
 
         WsEvent::TurnComplete { run_id, final_text } => {
+            // Dedup: the gateway sends both a lifecycle:end event AND a Res
+            // frame, each triggering TurnComplete. Skip if this run_id was
+            // already completed (already pushed to app.messages).
+            if app.messages.iter().any(|m| m.run_id.as_deref() == Some(&run_id)) {
+                app.stream.reset();
+                delta_map.clear();
+                return;
+            }
+
             let text = final_text
                 .filter(|t| !t.is_empty())
                 .unwrap_or_else(|| {

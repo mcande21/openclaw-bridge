@@ -143,7 +143,7 @@ pub const DEFAULT_WS_HOST: &str = "localhost";
 /// Resolution order:
 /// 1. `OPENCLAW_WS_HOST` — WS-specific override (must be an IP or hostname)
 /// 2. `OPENCLAW_HOST` — shared fallback
-/// 3. [`DEFAULT_WS_HOST`] — hardcoded Tailscale IP
+/// 3. [`DEFAULT_WS_HOST`] — `localhost` (safe default; set env var for remote)
 ///
 /// Setting `OPENCLAW_HOST` to an SSH alias would silently break WS connections;
 /// this ladder allows independent overrides while keeping a shared default.

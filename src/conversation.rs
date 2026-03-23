@@ -525,7 +525,7 @@ fn read_jsonl(path: &Path) -> Result<Vec<Message>, ConversationError> {
     messages.retain(|m| {
         match &m.run_id {
             Some(rid) => seen_run_ids.insert(rid.clone()),
-            None => true, // messages without run_id are always kept
+            None => true,
         }
     });
 

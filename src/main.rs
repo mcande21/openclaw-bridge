@@ -795,28 +795,17 @@ fn cmd_conversation_list(out: OutputConfig) -> Result<Value, CmdError> {
 /// directly.  Otherwise the first active thread whose ID starts with
 /// `thread_ref` is selected.  Errors when no match is found.
 fn cmd_send(thread_ref: &str, message: &str, timeout_secs: u64, out: OutputConfig) -> Result<Value, CmdError> {
-    // Try exact match first (avoids listing threads for the common case where
-    // the full UUID is provided).
-    let threads =
-        conversation::list_threads().map_err(|e| CmdError::user(e.to_string()))?;
-
-    let resolved_id = if let Some(exact) = threads.iter().find(|t| t.id == thread_ref) {
-        exact.id.clone()
-    } else {
-        // Prefix match — find_thread_by_prefix re-reads the index but that is
-        // acceptable: this path is only taken when the user supplies a prefix.
-        match find_thread_by_prefix(thread_ref).map_err(|e| CmdError::user(e.to_string()))? {
-            Some(entry) => entry.id.clone(),
-            None => {
-                return Err(
-                    CmdError::user(format!(
-                        "no thread found matching prefix '{}' — use `ocb conversation list` to see available threads",
-                        thread_ref
-                    ))
+    // Resolve prefix via lightweight index read (handles both exact and prefix match).
+    let resolved_id = match find_thread_by_prefix(thread_ref)
+        .map_err(|e| CmdError::user(e.to_string()))?
+    {
+        Some(entry) => entry.id,
+        None => {
+            return Err(
+                CmdError::user(format!("no thread matching: {thread_ref}"))
                     .with_code("THREAD_NOT_FOUND")
                     .with_hint("Use `ocb conversation list` to see available thread IDs"),
-                );
-            }
+            );
         }
     };
 

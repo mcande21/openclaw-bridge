@@ -34,7 +34,7 @@ Connect to your OpenClaw gateway and start a three-party conversation session.
    > Your messages appear in green, mine in cyan, and the remote agent in magenta."
 
 5. Start monitoring the thread:
-   Check for new messages every 30 seconds:
+   Check for new messages every 10 seconds:
    ```bash
    ocb conversation history <thread-id> --last 3
    ```
@@ -51,7 +51,7 @@ Connect to your OpenClaw gateway and start a three-party conversation session.
    Thread: {thread-id}
    Agent: {summary of agent's opening response}
 
-   Monitoring thread every 30s. To watch live:
+   Monitoring thread every 10s. To watch live:
      ocb tui --thread {thread-id}
    ```
 

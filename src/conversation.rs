@@ -229,6 +229,24 @@ fn append_message_in(
         .find(|e| e.id == thread_id)
         .ok_or_else(|| ConversationError::ThreadNotFound(thread_id.to_string()))?;
 
+    // Dedup: if a run_id is provided, check if it already exists in the thread.
+    // This prevents double-writes when both the CLI and TUI persist the same
+    // assistant response (one via cmd_conversation_send, one via TUI WS broadcast).
+    if let Some(rid) = run_id {
+        let check_path = if entry.archived {
+            archived_path(dir, thread_id)
+        } else {
+            active_path(dir, thread_id)
+        };
+        if check_path.exists()
+            && let Ok(existing) = read_jsonl(&check_path)
+                && existing.iter().any(|m| m.run_id.as_deref() == Some(rid)) {
+                    // Already persisted — return the existing message instead of writing a dupe.
+                    let existing_msg = existing.into_iter().find(|m| m.run_id.as_deref() == Some(rid)).unwrap();
+                    return Ok(existing_msg);
+                }
+    }
+
     let now = Utc::now();
     let message = Message {
         id: Uuid::new_v4().to_string(),

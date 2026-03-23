@@ -198,6 +198,11 @@ pub struct App {
     /// The TUI polls the file every N ticks and appends any new messages
     /// (written by other processes such as `ocb conversation send`).
     pub last_loaded_count: usize,
+
+    /// True when the TUI sent a message and is awaiting the agent's response.
+    /// Only persist TurnComplete to JSONL when this is true — external
+    /// responses (from CLI) are persisted by the CLI itself.
+    pub awaiting_own_response: bool,
 }
 
 impl App {
@@ -216,6 +221,7 @@ impl App {
             status_message_ticks: 0,
             should_quit: false,
             agent_id: None,
+            awaiting_own_response: false,
             thread_id: None,
             last_loaded_count: 0,
         }

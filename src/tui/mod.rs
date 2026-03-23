@@ -393,23 +393,25 @@ fn handle_ws_event(
 
             app.push_message(ChatMessage::assistant(text.clone(), Some(run_id.clone())));
 
-            // Persist the remote agent's response to JSONL so the full
-            // conversation is durable and visible to other processes.
-            if let Some(ref thread_id) = app.thread_id {
-                match conversation::append_message(
-                    thread_id,
-                    conversation::MessageRole::Assistant,
-                    &text,
-                    Some(&run_id),
-                    None, // source: None for remote agent (assistant) messages
-                ) {
-                    Ok(_) => {
-                        // Advance the count so poll_thread_file does not
-                        // re-add this message on the next file poll cycle.
-                        app.last_loaded_count += 1;
-                    }
-                    Err(e) => {
-                        app.set_status_message(format!("Save failed: {e}"), 30);
+            // Only persist if this was a response to a TUI-sent message.
+            // Responses to CLI-sent messages are persisted by the CLI itself.
+            // Without this check, both writers create duplicates.
+            if app.awaiting_own_response {
+                app.awaiting_own_response = false;
+                if let Some(ref thread_id) = app.thread_id {
+                    match conversation::append_message(
+                        thread_id,
+                        conversation::MessageRole::Assistant,
+                        &text,
+                        Some(&run_id),
+                        None,
+                    ) {
+                        Ok(_) => {
+                            app.last_loaded_count += 1;
+                        }
+                        Err(e) => {
+                            app.set_status_message(format!("Save failed: {e}"), 30);
+                        }
                     }
                 }
             }
@@ -530,6 +532,7 @@ fn handle_key_insert(app: &mut App, key: KeyEvent, msg_tx: &mpsc::Sender<String>
                 }
                 // Enqueue for the WS task. The task picks this up and sends
                 // the agent RPC; the response streams back via WsEvents.
+                app.awaiting_own_response = true;
                 match msg_tx.try_send(text) {
                     Ok(()) => {}
                     Err(mpsc::error::TrySendError::Full(_)) => {

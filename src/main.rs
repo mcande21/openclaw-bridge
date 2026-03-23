@@ -206,7 +206,7 @@ fn classify_box_error(e: Box<dyn std::error::Error + Send + Sync>) -> CmdError {
             .unwrap_or_else(|_| "openclaw".to_string());
         return CmdError::network(msg)
             .with_code("SSH_ERROR")
-            .with_hint(format!("Check SSH connectivity: ssh root@{host} openclaw --version"));
+            .with_hint(format!("Check SSH connectivity: ssh {host} openclaw --version"));
     }
 
     // Generic auth fallback.

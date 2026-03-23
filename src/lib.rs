@@ -29,7 +29,7 @@
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 //!     let token = std::env::var("OPENCLAW_TOKEN")?;
-//!     let mut client = WsClient::connect("localhost", 18789, &token).await?;
+//!     let mut client = WsClient::connect("your-gateway-host", 18789, &token).await?;
 //!     let result = client.agent_chat("main", "Hello from Claude Code", None).await?;
 //!     println!("{}", result.text);
 //!     client.disconnect().await?;
@@ -132,7 +132,10 @@ pub fn load_gateway_token() -> Result<String, String> {
 /// Default WebSocket port for the OpenClaw gateway.
 pub const WS_PORT: u16 = 18789;
 
-/// Default host for the OpenClaw gateway (Tailscale IP fallback).
+/// Default host for the OpenClaw gateway.
+///
+/// Set `OPENCLAW_HOST` to your gateway's IP or hostname. `localhost` is the
+/// safe default for local development; remote connections require this env var.
 pub const DEFAULT_WS_HOST: &str = "localhost";
 
 /// Resolve the WebSocket host.

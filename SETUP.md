@@ -10,7 +10,7 @@ This document is for Claude Code agents configuring the OpenClaw bridge after in
 
 Ask the user the following questions before proceeding:
 
-1. "What is your OpenClaw gateway host? (Tailscale IP or hostname, e.g. `localhost`)"
+1. "What is your OpenClaw gateway host? (Tailscale IP or hostname, e.g. `<your-gateway-ip>`)"
 2. "What is your gateway auth token? (Found in `~/.openclaw/openclaw.json` → `gateway.auth.token` on your VPS)"
 
 **Security — token handling:** Do NOT ask the user to paste their token in the chat. Instead, instruct them to store it directly in the config file:
@@ -32,6 +32,14 @@ Once the user confirms they've saved the token, set the gateway host:
 echo 'export OPENCLAW_HOST="<their-host>"' >> ~/.zshrc   # or ~/.bashrc
 # Also set in current session
 export OPENCLAW_HOST="<their-host>"
+```
+
+Optionally, set up an SSH alias in `~/.ssh/config` so SSH commands resolve without specifying a user or IP each time:
+
+```
+Host openclaw
+    HostName <your-gateway-ip>
+    User <your-user>
 ```
 
 **Verification:**

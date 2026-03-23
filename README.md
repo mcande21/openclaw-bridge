@@ -93,7 +93,7 @@ ocb tui
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `OPENCLAW_TOKEN` | Gateway auth token | Required |
-| `OPENCLAW_HOST` | Gateway host | `localhost` |
+| `OPENCLAW_HOST` | Gateway host | `localhost` (set to your gateway's IP or hostname for remote connections) |
 | `OPENCLAW_PORT` | Gateway WebSocket port | `18789` |
 | `OPENCLAW_WS_HOST` | WS-specific host override | `OPENCLAW_HOST` |
 | `OPENCLAW_SSH_HOST` | SSH host for SSH commands | `openclaw` |

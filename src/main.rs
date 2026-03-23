@@ -688,21 +688,18 @@ fn cmd_conversation_send(
 // ---------------------------------------------------------------------------
 
 fn cmd_conversation_history(thread_ref: &str, last: usize) -> Result<Value, CmdError> {
-    // Resolve prefix — same pattern as cmd_send.
-    let thread_id = match conversation::read_thread(thread_ref) {
-        Ok(_) => thread_ref.to_string(),
-        Err(_) => match find_thread_by_prefix(thread_ref)
-            .map_err(|e| CmdError::user(e.to_string()))?
-        {
-            Some(entry) => entry.id,
-            None => {
-                return Err(
-                    CmdError::user(format!("no thread matching: {thread_ref}"))
-                        .with_code("THREAD_NOT_FOUND")
-                        .with_hint("Use `ocb conversation list` to see available threads"),
-                );
-            }
-        },
+    // Resolve prefix via lightweight index read (not full JSONL).
+    let thread_id = match find_thread_by_prefix(thread_ref)
+        .map_err(|e| CmdError::user(e.to_string()))?
+    {
+        Some(entry) => entry.id,
+        None => {
+            return Err(
+                CmdError::user(format!("no thread matching: {thread_ref}"))
+                    .with_code("THREAD_NOT_FOUND")
+                    .with_hint("Use `ocb conversation list` to see available threads"),
+            );
+        }
     };
 
     // Offline command: works from local JSONL only, no network required.

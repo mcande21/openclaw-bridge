@@ -240,9 +240,7 @@ fn append_message_in(
         };
         if check_path.exists()
             && let Ok(existing) = read_jsonl(&check_path)
-                && existing.iter().any(|m| m.run_id.as_deref() == Some(rid)) {
-                    // Already persisted — return the existing message instead of writing a dupe.
-                    let existing_msg = existing.into_iter().find(|m| m.run_id.as_deref() == Some(rid)).unwrap();
+                && let Some(existing_msg) = existing.into_iter().find(|m| m.run_id.as_deref() == Some(rid)) {
                     return Ok(existing_msg);
                 }
     }

@@ -517,6 +517,18 @@ fn read_jsonl(path: &Path) -> Result<Vec<Message>, ConversationError> {
             Err(_) => continue,
         }
     }
+
+    // Deduplicate by run_id at the read boundary. The JSONL may contain
+    // duplicate entries when multiple processes (CLI + TUI) race to persist
+    // the same assistant response. Keep the first occurrence only.
+    let mut seen_run_ids = std::collections::HashSet::new();
+    messages.retain(|m| {
+        match &m.run_id {
+            Some(rid) => seen_run_ids.insert(rid.clone()),
+            None => true, // messages without run_id are always kept
+        }
+    });
+
     Ok(messages)
 }
 

@@ -17,8 +17,14 @@ If cargo is not available, proceed to Option B (pre-built binary). If cargo is a
 ### Option A: From Source (cargo)
 
 ```bash
+# CLI only (chat, send, status, agents, conversations)
 cargo install --git https://github.com/mcande21/openclaw-bridge --features cli
+
+# CLI + TUI viewer (recommended — includes the terminal conversation viewer)
+cargo install --git https://github.com/mcande21/openclaw-bridge --features tui
 ```
+
+The `tui` feature includes everything in `cli` plus the `ocb tui` command for watching conversations in real-time. Recommended for three-party sessions.
 
 This compiles and installs `ocb` to `~/.cargo/bin/`. The build takes 1-2 minutes on first run.
 

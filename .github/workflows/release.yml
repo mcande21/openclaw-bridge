@@ -238,8 +238,14 @@ jobs:
           VERSION="${{ fromJson(needs.plan.outputs.val).announcement_tag_is_implicit && '0.1.0' || fromJson(needs.plan.outputs.val).announcement_tag }}"
           VERSION="${VERSION#v}"
 
-          X86_ARCHIVE=$(ls macos-artifacts/openclaw-bridge-*-x86_64-apple-darwin.tar.xz 2>/dev/null | head -1)
-          ARM_ARCHIVE=$(ls macos-artifacts/openclaw-bridge-*-aarch64-apple-darwin.tar.xz 2>/dev/null | head -1)
+          X86_ARCHIVE=$(find macos-artifacts -name "*x86_64-apple-darwin.tar.xz" -type f | head -1)
+          ARM_ARCHIVE=$(find macos-artifacts -name "*aarch64-apple-darwin.tar.xz" -type f | head -1)
+
+          if [[ -z "$X86_ARCHIVE" || -z "$ARM_ARCHIVE" ]]; then
+            echo "::error::Could not find macOS archives. Contents of macos-artifacts:"
+            find macos-artifacts -type f
+            exit 1
+          fi
 
           mkdir -p extract/x86 extract/arm
 

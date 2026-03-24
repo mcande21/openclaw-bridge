@@ -322,6 +322,9 @@ fn run(cli: Cli, out: OutputConfig) -> Result<Value, CmdError> {
 
         #[cfg(feature = "tui")]
         Command::Tui { thread } => cmd_tui(thread),
+
+        #[cfg(feature = "mcp")]
+        Command::Mcp => cmd_mcp(),
     }
 }
 
@@ -1007,6 +1010,26 @@ fn cmd_tui(thread: Option<String>) -> Result<Value, CmdError> {
     rt.block_on(openclaw_bridge::tui::run_tui(thread))
         .map_err(|e| CmdError::network(e.to_string()))?;
     Ok(serde_json::json!({"status": "tui_exited"}))
+}
+
+// ---------------------------------------------------------------------------
+// mcp
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "mcp")]
+fn cmd_mcp() -> Result<Value, CmdError> {
+    // MCP servers must not print anything to stdout except JSON-RPC messages.
+    // Use a multi-thread runtime so Phase 2 can multiplex stdin reads + WS
+    // frames without blocking the executor.
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| CmdError::user(format!("failed to create runtime: {e}")))?;
+    rt.block_on(openclaw_bridge::mcp::run_mcp_server())
+        .map_err(|e| CmdError::network(e.to_string()))?;
+    // When the server exits cleanly (stdin closed), we do NOT print a JSON
+    // result to stdout — that would corrupt the MCP channel. Exit 0 silently.
+    std::process::exit(0);
 }
 
 // ---------------------------------------------------------------------------

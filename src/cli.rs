@@ -149,6 +149,15 @@ pub enum Command {
         #[arg(long)]
         thread: Option<String>,
     },
+
+    /// Start the MCP channel server (JSON-RPC 2.0 over stdio)
+    ///
+    /// Implements the Model Context Protocol so Claude Code can use `channel_history`
+    /// and `reply` tools to interact with the Aria conversation thread.
+    ///
+    /// Thread resolution: OCB_MCP_THREAD > most recent thread for OCB_MCP_AGENT (default: main)
+    #[cfg(feature = "mcp")]
+    Mcp,
 }
 
 #[derive(Subcommand)]

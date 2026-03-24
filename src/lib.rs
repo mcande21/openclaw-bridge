@@ -50,6 +50,9 @@ pub mod tui;
 #[cfg(feature = "cli")]
 pub mod watch;
 
+#[cfg(feature = "mcp")]
+pub mod mcp;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Global verbose flag. When `true`, the library emits `[ws]` and `[auth]`

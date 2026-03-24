@@ -714,16 +714,17 @@ async fn handle_ws_frame(
             };
 
             // Check if this event belongs to our pending reply.
+            //
+            // We only correlate by run_id — never adopt blindly. The gateway
+            // sets run_id in the accepted Res (handled in the Res branch below).
+            // Until we receive that Res, p.run_id is None and any incoming Event
+            // is unsolicited (e.g. Aria responding to Cooper's TUI message that
+            // arrived on the shared WS connection). Adopting the first Event's
+            // run_id would corrupt pending state and leave it stuck.
             if let Some(ref mut p) = *pending {
-                // Match by run_id once we have one, or accept the first event
-                // for our pending request.
                 let matches = match &p.run_id {
                     Some(rid) => *rid == agent_event.run_id,
-                    None => {
-                        // First event — adopt its run_id.
-                        p.run_id = Some(agent_event.run_id.clone());
-                        true
-                    }
+                    None => false, // run_id not yet confirmed via accepted Res — treat as unsolicited
                 };
 
                 if matches {

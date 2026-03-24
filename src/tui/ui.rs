@@ -424,8 +424,8 @@ mod tests {
     #[test]
     fn line_wraps_at_word_boundary() {
         let result = wrap_line("one two three four five", 10);
-        // "one two" = 7, "three" = 5, "four" = 4, "five" = 4
-        assert_eq!(result, vec!["one two", "three", "four five"]);
+        // greedy wrap: "one two" = 7, "three four" = 10 (fits), "five" = 4
+        assert_eq!(result, vec!["one two", "three four", "five"]);
     }
 
     #[test]

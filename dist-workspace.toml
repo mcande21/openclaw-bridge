@@ -13,5 +13,7 @@ installers = []
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-apple-darwin", "x86_64-unknown-linux-musl"]
 # Where to host releases
 hosting = "github"
+# Build with all features so the ocb binary and TUI are included
+features = ["cli", "tui"]
 # Allow manual edits to CI (lipo universal binary job)
 allow-dirty = ["ci"]

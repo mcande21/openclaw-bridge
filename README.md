@@ -32,15 +32,24 @@ Designed for AI agent consumption — all output is compact JSON unless otherwis
 
 ## Install
 
-### From source (requires Rust toolchain)
+### Pre-built binaries (recommended)
+
+Download the binary for your platform from [GitHub Releases](https://github.com/mcande21/openclaw-bridge/releases).
+
+**macOS (universal — runs on both Intel and Apple Silicon):**
+
+```bash
+curl -sL https://github.com/mcande21/openclaw-bridge/releases/latest/download/openclaw-bridge-0.1.0-universal-apple-darwin.tar.xz \
+  | tar -xJ && sudo mv ocb /usr/local/bin/
+```
+
+Check the [releases page](https://github.com/mcande21/openclaw-bridge/releases) for the current version number and other platform downloads (Linux x86_64, Linux aarch64).
+
+### From source (contributors)
 
 ```bash
 cargo install --git https://github.com/mcande21/openclaw-bridge --features cli
 ```
-
-### Pre-built binaries
-
-Download from [GitHub Releases](https://github.com/mcande21/openclaw-bridge/releases) for your platform.
 
 ## Quick Start
 

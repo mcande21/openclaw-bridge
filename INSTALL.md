@@ -1,20 +1,40 @@
 # openclaw-bridge: Install Guide
 
-This document is for Claude Code agents installing the `ocb` binary. Follow these steps in order. Each step includes a verification check — do not proceed until verification passes.
+This document is for Claude Code agents installing the `ocb` binary. Follow the steps in order.
 
-## Step 1: Check Prerequisites
+## Step 1: Install the Binary
+
+### Option A: Pre-Built Binary (recommended)
+
+Download the binary for your platform from
+[https://github.com/mcande21/openclaw-bridge/releases](https://github.com/mcande21/openclaw-bridge/releases).
+
+**macOS (universal — runs on both Intel and Apple Silicon):**
 
 ```bash
-# Check if cargo is available
-which cargo
-cargo --version
+curl -sL https://github.com/mcande21/openclaw-bridge/releases/latest/download/openclaw-bridge-0.1.0-universal-apple-darwin.tar.xz \
+  | tar -xJ && sudo mv ocb /usr/local/bin/
 ```
 
-If cargo is not available, proceed to Option B (pre-built binary). If cargo is available, use Option A.
+Check the releases page for the current version and the following platform assets:
 
-## Step 2: Install the Binary
+| Platform | Asset |
+|----------|-------|
+| macOS universal | `openclaw-bridge-0.1.0-universal-apple-darwin.tar.xz` |
+| macOS Apple Silicon | `openclaw-bridge-aarch64-apple-darwin.tar.xz` |
+| macOS Intel | `openclaw-bridge-x86_64-apple-darwin.tar.xz` |
+| Linux aarch64 (static) | `openclaw-bridge-aarch64-unknown-linux-musl.tar.xz` |
+| Linux x86_64 (static) | `openclaw-bridge-x86_64-unknown-linux-musl.tar.xz` |
 
-### Option A: From Source (cargo)
+**Linux:**
+
+```bash
+# Example for x86_64 — substitute aarch64 if needed
+curl -sL https://github.com/mcande21/openclaw-bridge/releases/latest/download/openclaw-bridge-0.1.0-x86_64-unknown-linux-musl.tar.xz \
+  | tar -xJ && sudo mv ocb /usr/local/bin/
+```
+
+### Option B: From Source (requires Rust toolchain)
 
 ```bash
 # CLI only (chat, send, status, agents, conversations)
@@ -28,21 +48,7 @@ The `tui` feature includes everything in `cli` plus the `ocb tui` command for wa
 
 This compiles and installs `ocb` to `~/.cargo/bin/`. The build takes 1-2 minutes on first run.
 
-### Option B: Pre-Built Binary
-
-```bash
-# Detect platform
-PLATFORM=$(uname -s | tr '[:upper:]' '[:lower:]')
-ARCH=$(uname -m)
-
-# Download from GitHub releases
-# Check https://github.com/mcande21/openclaw-bridge/releases for the latest version
-curl -sSL "https://github.com/mcande21/openclaw-bridge/releases/latest/download/ocb-${PLATFORM}-${ARCH}" \
-  -o ~/.local/bin/ocb
-chmod +x ~/.local/bin/ocb
-```
-
-## Step 3: Verify Install
+## Step 2: Verify Install
 
 ```bash
 ocb version
@@ -53,7 +59,7 @@ Expected output (exact values will vary):
 {"name":"ocb","version":"0.1.0","description":"CLI bridge connecting Claude Code to OpenClaw gateways"}
 ```
 
-If the command is not found, check that `~/.cargo/bin` (Option A) or `~/.local/bin` (Option B) is in your `PATH`.
+If the command is not found, check that `/usr/local/bin` (Option A) or `~/.cargo/bin` (Option B) is in your `PATH`.
 
 ## Next Step
 

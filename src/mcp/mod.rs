@@ -33,6 +33,7 @@ pub mod transport;
 use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
+use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::conversation::{self, ConversationError, MessageRole};
 use crate::protocol::{AgentEventPayload, AgentParams, WsFrame, new_request_id};
@@ -217,6 +218,23 @@ async fn run_select_loop(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut pending: Option<PendingReply> = None;
 
+    // -----------------------------------------------------------------------
+    // File watcher: watch the JSONL file for Cooper's TUI messages.
+    //
+    // notify callbacks run on a background OS thread, so we bridge to a
+    // tokio mpsc channel that the select! loop can await on.
+    // The watcher must stay alive for the duration of the loop.
+    // -----------------------------------------------------------------------
+    let (file_watcher_tx, mut file_watcher_rx) = tokio_mpsc::channel::<()>(32);
+    let _watcher: Option<Box<dyn notify::Watcher>> =
+        build_mcp_file_watcher(thread_id, file_watcher_tx);
+
+    // Seed last_seen_count from the current JSONL length so we don't replay
+    // history on startup.
+    let mut last_seen_count: usize = conversation::read_thread(thread_id)
+        .map(|msgs| msgs.len())
+        .unwrap_or(0);
+
     loop {
         tokio::select! {
             // ------------------------------------------------------------------
@@ -282,6 +300,7 @@ async fn run_select_loop(
                                 ws_write,
                                 session_key,
                                 agent_id,
+                                &mut last_seen_count,
                             )
                             .await
                         }
@@ -329,6 +348,7 @@ async fn run_select_loop(
                             frame,
                             &mut pending,
                             thread_id,
+                            &mut last_seen_count,
                         ).await {
                             transport.write_message(&resp).await?;
                         }
@@ -354,6 +374,22 @@ async fn run_select_loop(
                     }
                 }
             }
+
+            // ------------------------------------------------------------------
+            // Branch 3: JSONL file change — Cooper's TUI messages
+            // ------------------------------------------------------------------
+            Some(()) = file_watcher_rx.recv() => {
+                // Drain any additional pending events (FSEvents double-fire on macOS).
+                while file_watcher_rx.try_recv().is_ok() {}
+
+                if let Some(notifications) =
+                    poll_tui_messages(thread_id, &mut last_seen_count)
+                {
+                    for notification in notifications {
+                        transport.write_message(&notification).await?;
+                    }
+                }
+            }
         }
     }
 
@@ -369,119 +405,153 @@ async fn run_select_loop(
 /// `channel_history` still works. `reply` returns an error explaining why
 /// the WS is unavailable. This preserves MCP usability for read-only access
 /// when the gateway is down or unconfigured.
+///
+/// The file watcher is active even in this mode so Cooper's TUI messages are
+/// still forwarded to Claude Code as `notifications/claude/channel`.
 async fn run_without_ws(
     transport: &mut StdioTransport,
     thread_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     eprintln!("[mcp] running in read-only mode (no WS)");
 
+    let (file_watcher_tx, mut file_watcher_rx) = tokio_mpsc::channel::<()>(32);
+    let _watcher: Option<Box<dyn notify::Watcher>> =
+        build_mcp_file_watcher(thread_id, file_watcher_tx);
+
+    let mut last_seen_count: usize = conversation::read_thread(thread_id)
+        .map(|msgs| msgs.len())
+        .unwrap_or(0);
+
     loop {
-        let msg = match transport.read_message().await? {
-            Some(v) => v,
-            None => {
-                eprintln!("[mcp] stdin closed, shutting down");
-                break;
-            }
-        };
+        tokio::select! {
+            // ------------------------------------------------------------------
+            // Branch 1: MCP request from Claude Code (stdin)
+            // ------------------------------------------------------------------
+            mcp_result = transport.read_message() => {
+                let msg = match mcp_result? {
+                    Some(v) => v,
+                    None => {
+                        eprintln!("[mcp] stdin closed, shutting down");
+                        break;
+                    }
+                };
 
-        if msg.is_null() {
-            continue;
-        }
+                if msg.is_null() {
+                    continue;
+                }
 
-        let req_id = msg.get("id").cloned();
-        let method = msg
-            .get("method")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let is_notification = req_id.is_none();
+                let req_id = msg.get("id").cloned();
+                let method = msg
+                    .get("method")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let is_notification = req_id.is_none();
 
-        let response: Option<Value> = match method.as_str() {
-            "tools/list" => {
-                if is_notification {
-                    None
-                } else {
-                    Some(json!({
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "result": {
-                            "tools": tools::tool_schemas()
+                let response: Option<Value> = match method.as_str() {
+                    "tools/list" => {
+                        if is_notification {
+                            None
+                        } else {
+                            Some(json!({
+                                "jsonrpc": "2.0",
+                                "id": req_id,
+                                "result": {
+                                    "tools": tools::tool_schemas()
+                                }
+                            }))
                         }
-                    }))
+                    }
+
+                    "tools/call" => {
+                        if is_notification {
+                            None
+                        } else {
+                            let params = msg.get("params").cloned().unwrap_or(Value::Null);
+                            let tool_name = params
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let tool_input = params
+                                .get("arguments")
+                                .cloned()
+                                .unwrap_or(json!({}));
+                            let id = req_id.as_ref().unwrap_or(&Value::Null).clone();
+
+                            let result = match tool_name.as_str() {
+                                "channel_history" => {
+                                    tools::handle_channel_history(&tool_input, thread_id)
+                                }
+                                "reply" => {
+                                    json!({
+                                        "isError": true,
+                                        "content": [{
+                                            "type": "text",
+                                            "text": "WebSocket not connected. Set OPENCLAW_TOKEN and ensure the gateway is reachable."
+                                        }]
+                                    })
+                                }
+                                other => {
+                                    eprintln!("[mcp] unknown tool: {other}");
+                                    json!({
+                                        "isError": true,
+                                        "content": [{"type": "text", "text": format!("Unknown tool: {other}")}]
+                                    })
+                                }
+                            };
+
+                            Some(json!({
+                                "jsonrpc": "2.0",
+                                "id": id,
+                                "result": result
+                            }))
+                        }
+                    }
+
+                    "ping" => {
+                        if is_notification {
+                            None
+                        } else {
+                            Some(json!({ "jsonrpc": "2.0", "id": req_id, "result": {} }))
+                        }
+                    }
+
+                    other => {
+                        if is_notification {
+                            eprintln!("[mcp] unknown notification: {other}");
+                            None
+                        } else {
+                            Some(json_rpc_error(
+                                &req_id.unwrap_or(Value::Null),
+                                -32601,
+                                &format!("Method not found: {other}"),
+                                None,
+                            ))
+                        }
+                    }
+                };
+
+                if let Some(resp) = response {
+                    transport.write_message(&resp).await?;
                 }
             }
 
-            "tools/call" => {
-                if is_notification {
-                    None
-                } else {
-                    let params = msg.get("params").cloned().unwrap_or(Value::Null);
-                    let tool_name = params
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let tool_input = params
-                        .get("arguments")
-                        .cloned()
-                        .unwrap_or(json!({}));
-                    let id = req_id.as_ref().unwrap_or(&Value::Null).clone();
+            // ------------------------------------------------------------------
+            // Branch 2: JSONL file change — Cooper's TUI messages
+            // ------------------------------------------------------------------
+            Some(()) = file_watcher_rx.recv() => {
+                // Drain any additional pending events (FSEvents double-fire on macOS).
+                while file_watcher_rx.try_recv().is_ok() {}
 
-                    let result = match tool_name.as_str() {
-                        "channel_history" => {
-                            tools::handle_channel_history(&tool_input, thread_id)
-                        }
-                        "reply" => {
-                            json!({
-                                "isError": true,
-                                "content": [{
-                                    "type": "text",
-                                    "text": "WebSocket not connected. Set OPENCLAW_TOKEN and ensure the gateway is reachable."
-                                }]
-                            })
-                        }
-                        other => {
-                            eprintln!("[mcp] unknown tool: {other}");
-                            json!({
-                                "isError": true,
-                                "content": [{"type": "text", "text": format!("Unknown tool: {other}")}]
-                            })
-                        }
-                    };
-
-                    Some(json!({
-                        "jsonrpc": "2.0",
-                        "id": id,
-                        "result": result
-                    }))
+                if let Some(notifications) =
+                    poll_tui_messages(thread_id, &mut last_seen_count)
+                {
+                    for notification in notifications {
+                        transport.write_message(&notification).await?;
+                    }
                 }
             }
-
-            "ping" => {
-                if is_notification {
-                    None
-                } else {
-                    Some(json!({ "jsonrpc": "2.0", "id": req_id, "result": {} }))
-                }
-            }
-
-            other => {
-                if is_notification {
-                    eprintln!("[mcp] unknown notification: {other}");
-                    None
-                } else {
-                    Some(json_rpc_error(
-                        &req_id.unwrap_or(Value::Null),
-                        -32601,
-                        &format!("Method not found: {other}"),
-                        None,
-                    ))
-                }
-            }
-        };
-
-        if let Some(resp) = response {
-            transport.write_message(&resp).await?;
         }
     }
 
@@ -507,6 +577,7 @@ async fn dispatch_tool_ws(
     ws_write: &mut WsWriteHalf,
     session_key: &str,
     agent_id: &str,
+    last_seen_count: &mut usize,
 ) -> Option<Value> {
     match tool_name {
         "channel_history" => {
@@ -543,14 +614,21 @@ async fn dispatch_tool_ws(
                 })),
                 ToolCallResult::PendingReply { message } => {
                     // Persist outbound message to JSONL.
-                    if let Err(e) = conversation::append_message(
+                    match conversation::append_message(
                         thread_id,
                         MessageRole::User,
                         &message,
                         None,
                         Some("mcp"),
                     ) {
-                        eprintln!("[mcp] failed to persist outbound message: {e}");
+                        Ok(_) => {
+                            // Advance last_seen_count so the file watcher does not
+                            // echo our own outbound message back as a TUI notification.
+                            *last_seen_count += 1;
+                        }
+                        Err(e) => {
+                            eprintln!("[mcp] failed to persist outbound message: {e}");
+                        }
                     }
 
                     // Send WS agent request.
@@ -620,6 +698,7 @@ async fn handle_ws_frame(
     frame: WsFrame,
     pending: &mut Option<PendingReply>,
     thread_id: &str,
+    last_seen_count: &mut usize,
 ) -> Option<Value> {
     match frame {
         // ------------------------------------------------------------------
@@ -677,7 +756,7 @@ async fn handle_ws_frame(
                                 {
                                     p.final_text = Some(final_text.to_string());
                                 }
-                                return complete_pending_reply(pending, thread_id).await;
+                                return complete_pending_reply(pending, thread_id, last_seen_count).await;
                             }
                         }
                         _ => {}
@@ -736,7 +815,7 @@ async fn handle_ws_frame(
 
                     // If text arrived with accepted Res, complete immediately.
                     if p.final_text.is_some() {
-                        return complete_pending_reply(pending, thread_id).await;
+                        return complete_pending_reply(pending, thread_id, last_seen_count).await;
                     }
                     return None;
                 }
@@ -753,7 +832,7 @@ async fn handle_ws_frame(
                     // Completion Res arrived — but we wait for lifecycle end.
                     // If lifecycle end never fires, we'll complete here anyway.
                     if p.final_text.is_some() {
-                        return complete_pending_reply(pending, thread_id).await;
+                        return complete_pending_reply(pending, thread_id, last_seen_count).await;
                     }
                     return None;
                 }
@@ -781,6 +860,7 @@ async fn handle_ws_frame(
 async fn complete_pending_reply(
     pending: &mut Option<PendingReply>,
     thread_id: &str,
+    last_seen_count: &mut usize,
 ) -> Option<Value> {
     let p = pending.take()?;
     let text = p.assemble_text();
@@ -789,14 +869,21 @@ async fn complete_pending_reply(
     eprintln!("[mcp] reply complete (run_id={:?})", run_id);
 
     // Persist assistant response to JSONL.
-    if let Err(e) = conversation::append_message(
+    match conversation::append_message(
         thread_id,
         MessageRole::Assistant,
         &text,
         run_id,
         None,
     ) {
-        eprintln!("[mcp] failed to persist assistant response: {e}");
+        Ok(_) => {
+            // Advance last_seen_count so the file watcher does not re-emit
+            // our own assistant response as a TUI notification.
+            *last_seen_count += 1;
+        }
+        Err(e) => {
+            eprintln!("[mcp] failed to persist assistant response: {e}");
+        }
     }
 
     Some(json!({
@@ -851,6 +938,84 @@ async fn emit_channel_notification(
             }
         }
     }))
+}
+
+// ---------------------------------------------------------------------------
+// File watcher helpers
+// ---------------------------------------------------------------------------
+
+/// Create a [`notify::RecommendedWatcher`] watching the thread JSONL file.
+///
+/// Sends `()` on `tx` whenever the file changes. Returns `None` on any
+/// failure — the caller falls back gracefully (no file watcher branch fires).
+///
+/// The returned `Box<dyn notify::Watcher>` must be kept alive for the
+/// duration of the select loop; dropping it stops the watch.
+fn build_mcp_file_watcher(
+    thread_id: &str,
+    tx: tokio_mpsc::Sender<()>,
+) -> Option<Box<dyn notify::Watcher>> {
+    use notify::Watcher as _;
+
+    let jsonl_path = match conversation::thread_file_path(thread_id) {
+        Ok(Some(p)) => p,
+        _ => return None,
+    };
+
+    let mut watcher =
+        notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if res.is_ok() {
+                // UnboundedSender::send is sync; channel-full means the
+                // consumer is behind — that is fine, we just skip the tick.
+                let _ = tx.try_send(());
+            }
+        })
+        .ok()?;
+
+    watcher
+        .watch(&jsonl_path, notify::RecursiveMode::NonRecursive)
+        .ok()?;
+
+    Some(Box::new(watcher))
+}
+
+/// Read new messages from the thread JSONL and return a notification for each
+/// `source: "tui"` message that arrived since `last_seen_count`.
+///
+/// Advances `last_seen_count` to the current message count on return.
+/// Returns `None` when there is nothing to emit (no new messages, or new
+/// messages are not from the TUI).
+fn poll_tui_messages(
+    thread_id: &str,
+    last_seen_count: &mut usize,
+) -> Option<Vec<Value>> {
+    let messages = conversation::read_thread(thread_id).ok()?;
+    if messages.len() <= *last_seen_count {
+        return None;
+    }
+
+    let mut notifications = Vec::new();
+    for msg in &messages[*last_seen_count..] {
+        if msg.source.as_deref() == Some("tui") {
+            let ts = msg.timestamp.to_rfc3339();
+            notifications.push(json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/claude/channel",
+                "params": {
+                    "content": msg.content,
+                    "meta": {
+                        "user": "cooper",
+                        "source": "tui",
+                        "ts": ts
+                    }
+                }
+            }));
+        }
+    }
+
+    *last_seen_count = messages.len();
+
+    if notifications.is_empty() { None } else { Some(notifications) }
 }
 
 // ---------------------------------------------------------------------------

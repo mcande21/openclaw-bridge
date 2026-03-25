@@ -1023,13 +1023,13 @@ fn poll_tui_messages(
 // Thread resolution
 // ---------------------------------------------------------------------------
 
-/// Resolve the thread ID the MCP server will read history from.
+/// Resolve the thread ID the MCP server will use for this session.
 ///
 /// Resolution order:
-/// 1. `OCB_MCP_THREAD` env var — use as-is.
-/// 2. Auto-resolve: most recent active thread for the agent named by
-///    `OCB_MCP_AGENT` (default `"main"`).
-/// 3. If no thread exists, create one for the agent.
+/// 1. `OCB_MCP_THREAD` env var — use as-is (explicit override).
+/// 2. Always create a fresh thread for the agent named by `OCB_MCP_AGENT`
+///    (default `"main"`). Each MCP server session gets its own thread so that
+///    Claude Code sessions remain isolated from TUI and Discord conversations.
 fn resolve_thread_id() -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     // 1. Explicit override.
     if let Ok(tid) = std::env::var("OCB_MCP_THREAD") {
@@ -1039,28 +1039,14 @@ fn resolve_thread_id() -> Result<String, Box<dyn std::error::Error + Send + Sync
         }
     }
 
-    // 2. Auto-resolve by agent ID.
+    // 2. Always create a new thread for this session.
     let agent_id = std::env::var("OCB_MCP_AGENT").unwrap_or_else(|_| "main".to_string());
     let agent_id = agent_id.trim().to_string();
 
-    let threads = conversation::list_threads().map_err(|e| {
-        Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-    })?;
-
-    // Most recently updated active thread for this agent.
-    if let Some(entry) = threads
-        .into_iter()
-        .filter(|t| t.agent_id == agent_id)
-        .max_by_key(|t| t.updated_at)
-    {
-        return Ok(entry.id);
-    }
-
-    // 3. No thread found — create one.
-    eprintln!("[mcp] no thread for agent '{agent_id}', creating one");
     let thread = conversation::create_thread(&agent_id).map_err(|e: ConversationError| {
         Box::new(e) as Box<dyn std::error::Error + Send + Sync>
     })?;
+    eprintln!("[mcp] created session thread: {}", thread.id);
     Ok(thread.id)
 }
 

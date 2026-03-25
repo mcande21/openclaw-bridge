@@ -65,7 +65,7 @@ pub const DEFAULT_CHAT_TIMEOUT: Duration = Duration::from_secs(120);
 pub const DEFAULT_SPAWN_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Timeout for the WebSocket handshake (challenge + hello-ok round-trip).
-const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(600);
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 
 // ---------------------------------------------------------------------------
 // Error type

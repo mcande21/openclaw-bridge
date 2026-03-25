@@ -87,7 +87,7 @@ ocb --version
 Expected output:
 
 ```json
-{"name":"ocb","version":"0.2.0","description":"CLI bridge connecting Claude Code to OpenClaw gateways"}
+{"name":"ocb","version":"0.2.1","description":"CLI bridge connecting Claude Code to OpenClaw gateways"}
 ```
 
 If the command is not found:

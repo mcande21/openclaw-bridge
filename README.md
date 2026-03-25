@@ -82,8 +82,8 @@ Messages are color-coded: green (you), cyan (Claude Code), magenta (remote agent
 ### Watch mode
 
 ```bash
-# Stream incoming messages from an agent
-ocb watch --agent main
+# Stream incoming messages on a thread
+ocb watch --thread <thread-id> --session <session-id>
 ```
 
 ## MCP Channel Server
@@ -113,7 +113,7 @@ This is a research preview. The `--dangerously-load-development-channels` flag i
 | `ocb chat --agent <id> -m "..."` | One-shot message, wait for response | WebSocket |
 | `ocb send <thread-prefix> -m "..."` | Send to thread by prefix | WS + Local |
 | `ocb spawn --agent <id> --task "..."` | Fire-and-forget agent dispatch | SSH |
-| `ocb watch --agent <id>` | Stream incoming messages | WebSocket |
+| `ocb watch --thread <id> --session <id>` | Stream incoming messages | WebSocket |
 | `ocb status` | Gateway health check | SSH |
 | `ocb agents` | List active agent sessions | SSH |
 | `ocb conversation new --agent <id>` | Create conversation thread | Local |

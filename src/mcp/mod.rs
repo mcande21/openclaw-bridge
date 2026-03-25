@@ -1102,3 +1102,203 @@ async fn wait_for_message(
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use tempfile::TempDir;
+
+    use super::resolve_thread_id;
+
+    /// Global lock to serialize tests that mutate process-wide env vars.
+    ///
+    /// `cargo test` runs tests in parallel by default. Any test that sets
+    /// `OCB_MCP_THREAD`, `OCB_MCP_AGENT`, or `XDG_CONFIG_HOME` must hold this
+    /// lock for the duration of the test to prevent interference.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Create a temp directory and return it. The directory lives for the
+    /// lifetime of the returned `TempDir` — keep it in scope.
+    ///
+    /// Sets `XDG_CONFIG_HOME` to the temp path so `create_thread()` writes
+    /// there instead of `~/.config`. The caller is responsible for unsetting
+    /// `XDG_CONFIG_HOME` before dropping the `TempDir`.
+    fn setup_temp_config() -> TempDir {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // SAFETY: single-threaded test context; ENV_LOCK is held by the caller.
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", tmp.path()) };
+        tmp
+    }
+
+    /// Restore the environment to a clean state after an env-var test.
+    ///
+    /// # Safety
+    ///
+    /// Caller must hold `ENV_LOCK` for the duration of the test.
+    fn teardown(saved_thread: Option<String>, saved_agent: Option<String>) {
+        // SAFETY: ENV_LOCK is held by the caller for the full test duration.
+        unsafe {
+            match saved_thread {
+                Some(v) => std::env::set_var("OCB_MCP_THREAD", v),
+                None => std::env::remove_var("OCB_MCP_THREAD"),
+            }
+            match saved_agent {
+                Some(v) => std::env::set_var("OCB_MCP_AGENT", v),
+                None => std::env::remove_var("OCB_MCP_AGENT"),
+            }
+            std::env::remove_var("XDG_CONFIG_HOME");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Test: fresh thread without env vars
+    // -----------------------------------------------------------------------
+
+    /// `resolve_thread_id()` with no `OCB_MCP_THREAD` set creates a new thread
+    /// and returns a non-empty string that looks like a UUID.
+    #[test]
+    fn fresh_thread_returns_valid_uuid() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let saved_thread = std::env::var("OCB_MCP_THREAD").ok();
+        let saved_agent = std::env::var("OCB_MCP_AGENT").ok();
+
+        let _tmp = setup_temp_config();
+        // SAFETY: ENV_LOCK is held above for the duration of this test.
+        unsafe {
+            std::env::remove_var("OCB_MCP_THREAD");
+            std::env::remove_var("OCB_MCP_AGENT");
+        }
+
+        let result = resolve_thread_id();
+        teardown(saved_thread, saved_agent);
+
+        let id = result.expect("resolve_thread_id should succeed");
+        assert!(!id.is_empty(), "thread id must not be empty");
+        // UUID v4 format: 8-4-4-4-12 hex chars separated by hyphens.
+        assert_eq!(id.len(), 36, "thread id should be UUID-length (36 chars)");
+        let parts: Vec<&str> = id.split('-').collect();
+        assert_eq!(parts.len(), 5, "UUID has 5 hyphen-separated groups");
+    }
+
+    // -----------------------------------------------------------------------
+    // Test: explicit thread override
+    // -----------------------------------------------------------------------
+
+    /// When `OCB_MCP_THREAD` is set, `resolve_thread_id()` returns that exact
+    /// value and does not create a new thread.
+    #[test]
+    fn explicit_thread_override_is_returned_as_is() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let saved_thread = std::env::var("OCB_MCP_THREAD").ok();
+        let saved_agent = std::env::var("OCB_MCP_AGENT").ok();
+
+        let _tmp = setup_temp_config();
+        let override_id = "test-thread-override-abc123";
+        // SAFETY: ENV_LOCK is held above for the duration of this test.
+        unsafe { std::env::set_var("OCB_MCP_THREAD", override_id) };
+
+        let result = resolve_thread_id();
+        teardown(saved_thread, saved_agent);
+
+        let id = result.expect("resolve_thread_id should succeed");
+        assert_eq!(id, override_id, "should return the OCB_MCP_THREAD value unchanged");
+    }
+
+    /// An `OCB_MCP_THREAD` containing only whitespace is treated as unset and
+    /// a fresh thread is created instead.
+    #[test]
+    fn whitespace_only_thread_env_creates_fresh_thread() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let saved_thread = std::env::var("OCB_MCP_THREAD").ok();
+        let saved_agent = std::env::var("OCB_MCP_AGENT").ok();
+
+        let _tmp = setup_temp_config();
+        // SAFETY: ENV_LOCK is held above for the duration of this test.
+        unsafe {
+            std::env::set_var("OCB_MCP_THREAD", "   ");
+            std::env::remove_var("OCB_MCP_AGENT");
+        }
+
+        let result = resolve_thread_id();
+        teardown(saved_thread, saved_agent);
+
+        let id = result.expect("resolve_thread_id should succeed");
+        assert!(
+            id != "   " && !id.trim().is_empty(),
+            "whitespace-only OCB_MCP_THREAD should not be returned as-is"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Test: multiple calls produce different IDs (isolation guarantee)
+    // -----------------------------------------------------------------------
+
+    /// Two sequential calls to `resolve_thread_id()` without `OCB_MCP_THREAD`
+    /// must return different thread IDs. This is the core isolation guarantee:
+    /// each MCP session gets its own thread.
+    #[test]
+    fn sequential_calls_produce_distinct_thread_ids() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let saved_thread = std::env::var("OCB_MCP_THREAD").ok();
+        let saved_agent = std::env::var("OCB_MCP_AGENT").ok();
+
+        let _tmp = setup_temp_config();
+        // SAFETY: ENV_LOCK is held above for the duration of this test.
+        unsafe {
+            std::env::remove_var("OCB_MCP_THREAD");
+            std::env::remove_var("OCB_MCP_AGENT");
+        }
+
+        let id1 = resolve_thread_id().expect("first call");
+        let id2 = resolve_thread_id().expect("second call");
+        teardown(saved_thread, saved_agent);
+
+        assert_ne!(
+            id1, id2,
+            "each resolve_thread_id() call must produce a unique thread — session isolation broken"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Test: custom agent ID
+    // -----------------------------------------------------------------------
+
+    /// When `OCB_MCP_AGENT` is set, `resolve_thread_id()` creates a thread
+    /// under that agent. The returned thread ID is a valid UUID (we verify
+    /// the thread was actually created by confirming the ID is well-formed).
+    #[test]
+    fn custom_agent_id_creates_thread() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let saved_thread = std::env::var("OCB_MCP_THREAD").ok();
+        let saved_agent = std::env::var("OCB_MCP_AGENT").ok();
+
+        let _tmp = setup_temp_config();
+        // SAFETY: ENV_LOCK is held above for the duration of this test.
+        unsafe {
+            std::env::remove_var("OCB_MCP_THREAD");
+            std::env::set_var("OCB_MCP_AGENT", "custom-agent");
+        }
+
+        let result = resolve_thread_id();
+        teardown(saved_thread, saved_agent);
+
+        let id = result.expect("resolve_thread_id should succeed with custom agent");
+        assert!(!id.is_empty(), "thread id must not be empty");
+        assert_eq!(id.len(), 36, "thread id should be UUID-length (36 chars)");
+        // The thread was created under "custom-agent". We verify the ID is a
+        // well-formed UUID — the agent_id is embedded in the index file on disk,
+        // not in the thread ID itself, so UUID shape is the right assertion here.
+        let parts: Vec<&str> = id.split('-').collect();
+        assert_eq!(parts.len(), 5, "UUID has 5 hyphen-separated groups");
+    }
+}

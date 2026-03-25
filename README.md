@@ -16,7 +16,7 @@ Your Machine                          Your VPS
 ## Prerequisites
 
 - [Tailscale](https://tailscale.com) installed on both your local machine and gateway server (recommended for secure, zero-config networking)
-- An [OpenClaw](https://openclaw.ai) gateway running on your server
+- An [OpenClaw](https://openclaw.ai) gateway running on your server ([setup guide](GATEWAY.md))
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (for MCP integration)
 
 ## Features

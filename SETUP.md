@@ -2,6 +2,8 @@
 
 Post-install configuration. Gets you from a fresh `ocb` binary to a working gateway connection.
 
+**Don't have a gateway yet?** See [GATEWAY.md](GATEWAY.md) to set one up first.
+
 **Prerequisites:** `ocb` installed and on your PATH. If not, see [INSTALL.md](INSTALL.md).
 
 ---

@@ -1,66 +1,99 @@
-# openclaw-bridge: Install Guide
+# Install
 
-This document is for Claude Code agents installing the `ocb` binary. Follow the steps in order.
+Three ways to install `ocb`. Pick the one that fits your situation.
 
-## Step 1: Install the Binary
+---
 
-### Option A: Pre-Built Binary (recommended)
-
-Download the binary for your platform from
-[https://github.com/mcande21/openclaw-bridge/releases](https://github.com/mcande21/openclaw-bridge/releases).
-
-**macOS (universal — runs on both Intel and Apple Silicon):**
+## Option 1: Homebrew (macOS, easiest)
 
 ```bash
-curl -sL https://github.com/mcande21/openclaw-bridge/releases/latest/download/openclaw-bridge-0.1.0-universal-apple-darwin.tar.xz \
-  | tar -xJ && sudo mv ocb /usr/local/bin/
+brew tap mcande21/tap && brew install openclaw-bridge
 ```
 
-Check the releases page for the current version and the following platform assets:
+This installs the full binary (CLI + TUI + MCP) and keeps it up to date with `brew upgrade`.
+
+---
+
+## Option 2: Pre-built Binary
+
+Download from [GitHub Releases](https://github.com/mcande21/openclaw-bridge/releases).
+
+Available platforms:
 
 | Platform | Asset |
 |----------|-------|
-| macOS universal | `openclaw-bridge-0.1.0-universal-apple-darwin.tar.xz` |
+| macOS universal (Intel + Apple Silicon) | `openclaw-bridge-universal-apple-darwin.tar.xz` |
 | macOS Apple Silicon | `openclaw-bridge-aarch64-apple-darwin.tar.xz` |
 | macOS Intel | `openclaw-bridge-x86_64-apple-darwin.tar.xz` |
-| Linux aarch64 (static) | `openclaw-bridge-aarch64-unknown-linux-musl.tar.xz` |
-| Linux x86_64 (static) | `openclaw-bridge-x86_64-unknown-linux-musl.tar.xz` |
+| Linux aarch64 (static musl) | `openclaw-bridge-aarch64-unknown-linux-musl.tar.xz` |
+| Linux x86_64 (static musl) | `openclaw-bridge-x86_64-unknown-linux-musl.tar.xz` |
 
-**Linux:**
+**macOS (universal):**
 
 ```bash
-# Example for x86_64 — substitute aarch64 if needed
-curl -sL https://github.com/mcande21/openclaw-bridge/releases/latest/download/openclaw-bridge-0.1.0-x86_64-unknown-linux-musl.tar.xz \
+curl -sL https://github.com/mcande21/openclaw-bridge/releases/latest/download/openclaw-bridge-universal-apple-darwin.tar.xz \
   | tar -xJ && sudo mv ocb /usr/local/bin/
 ```
 
-### Option B: From Source (requires Rust toolchain)
+**Linux x86_64:**
 
 ```bash
-# CLI only (chat, send, status, agents, conversations)
-cargo install --git https://github.com/mcande21/openclaw-bridge --features cli
-
-# CLI + TUI viewer (recommended — includes the terminal conversation viewer)
-cargo install --git https://github.com/mcande21/openclaw-bridge --features tui
+curl -sL https://github.com/mcande21/openclaw-bridge/releases/latest/download/openclaw-bridge-x86_64-unknown-linux-musl.tar.xz \
+  | tar -xJ && sudo mv ocb /usr/local/bin/
 ```
 
-The `tui` feature includes everything in `cli` plus the `ocb tui` command for watching conversations in real-time. Recommended for three-party sessions.
+Substitute `aarch64` in the URL for ARM Linux.
 
-This compiles and installs `ocb` to `~/.cargo/bin/`. The build takes 1-2 minutes on first run.
+> **Note:** v0.2.0 binaries include CLI, TUI, and MCP. v0.1.0 binaries include CLI and TUI only — `ocb mcp` is not available in v0.1.0.
 
-## Step 2: Verify Install
+---
+
+## Option 3: Build from Source (contributors)
+
+Requires a Rust toolchain. Install via [rustup](https://rustup.rs/) if needed.
 
 ```bash
-ocb version
+git clone https://github.com/mcande21/openclaw-bridge
+cd openclaw-bridge
+
+# Full build (CLI + TUI + MCP — recommended)
+cargo install --path . --features cli,tui,mcp
+
+# CLI only
+cargo install --path . --features cli
+
+# CLI + TUI (no MCP)
+cargo install --path . --features cli,tui
 ```
 
-Expected output (exact values will vary):
+First build takes 1-3 minutes. The binary installs to `~/.cargo/bin/`.
+
+**Feature flags:**
+
+| Feature | Adds |
+|---------|------|
+| `cli` | Core commands: `chat`, `send`, `spawn`, `status`, `conversation`, `workspace` |
+| `tui` | Interactive terminal UI (`ocb tui`) |
+| `mcp` | MCP channel server (`ocb mcp`) for Claude Code integration |
+
+---
+
+## Verify
+
+```bash
+ocb --version
+```
+
+Expected output:
+
 ```json
-{"name":"ocb","version":"0.1.0","description":"CLI bridge connecting Claude Code to OpenClaw gateways"}
+{"name":"ocb","version":"0.2.0","description":"CLI bridge connecting Claude Code to OpenClaw gateways"}
 ```
 
-If the command is not found, check that `/usr/local/bin` (Option A) or `~/.cargo/bin` (Option B) is in your `PATH`.
+If the command is not found:
+- Homebrew / binary: check that `/usr/local/bin` is in `PATH`
+- Source build: check that `~/.cargo/bin` is in `PATH`
 
-## Next Step
+---
 
-Binary installed. Now read [SETUP.md](SETUP.md) to configure the gateway connection.
+Next: [SETUP.md](SETUP.md)

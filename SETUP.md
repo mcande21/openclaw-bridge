@@ -1,257 +1,136 @@
-# openclaw-bridge: Setup Guide
+# Setup
 
-This document is for Claude Code agents configuring the OpenClaw bridge after installation. Follow these steps in order with your user. Each step includes verification.
+Post-install configuration. Gets you from a fresh `ocb` binary to a working gateway connection.
 
-**Prerequisites:** The `ocb` binary must be installed. If not, read [INSTALL.md](INSTALL.md) first.
+**Prerequisites:** `ocb` installed and on your PATH. If not, see [INSTALL.md](INSTALL.md).
 
 ---
 
-## Step 1: Gather Gateway Information
-
-Ask the user the following questions before proceeding:
-
-1. "What is your OpenClaw gateway host? (Tailscale IP or hostname, e.g. `<your-gateway-ip>`)"
-2. "What is your gateway auth token? (Found in `~/.openclaw/openclaw.json` → `gateway.auth.token` on your VPS)"
-
-**Security — token handling:** Do NOT ask the user to paste their token in the chat. Instead, instruct them to store it directly in the config file:
-
-Tell the user:
-> "Please run this command in your terminal to save your token securely:
-> ```bash
-> mkdir -p ~/.config/openclaw-bridge
-> chmod 700 ~/.config/openclaw-bridge
-> echo 'YOUR_TOKEN_HERE' > ~/.config/openclaw-bridge/gateway-token
-> chmod 600 ~/.config/openclaw-bridge/gateway-token
-> ```
-> Replace `YOUR_TOKEN_HERE` with the actual token."
-
-Once the user confirms they've saved the token, set the gateway host:
+## Step 1: Set OPENCLAW_HOST
 
 ```bash
-# Add to shell profile for persistence
-echo 'export OPENCLAW_HOST="<their-host>"' >> ~/.zshrc   # or ~/.bashrc
-# Also set in current session
-export OPENCLAW_HOST="<their-host>"
+export OPENCLAW_HOST="your-gateway-host"
 ```
 
-Optionally, set up an SSH alias in `~/.ssh/config` so SSH commands resolve without specifying a user or IP each time:
+This is your OpenClaw gateway's Tailscale IP, hostname, or domain. Add it to your shell profile for persistence:
+
+```bash
+echo 'export OPENCLAW_HOST="your-gateway-host"' >> ~/.zshrc   # or ~/.bashrc
+```
+
+If your SSH commands use a custom host alias, add a stanza to `~/.ssh/config`:
 
 ```
 Host openclaw
-    HostName <your-gateway-ip>
-    User <your-user>
+    HostName your-gateway-host
+    User your-user
 ```
-
-**Verification:**
-```bash
-ocb auth status
-```
-Expected: `"token_status": "present"`. If `"not_found"`, the token file was not created correctly.
 
 ---
 
-## Step 2: Pair This Device
+## Step 2: Store Your Gateway Token
+
+Your gateway auth token lives at `~/.config/openclaw-bridge/gateway-token`. Write it directly — do not pass it through env vars or chat.
+
+```bash
+mkdir -p ~/.config/openclaw-bridge
+chmod 700 ~/.config/openclaw-bridge
+echo 'YOUR_TOKEN_HERE' > ~/.config/openclaw-bridge/gateway-token
+chmod 600 ~/.config/openclaw-bridge/gateway-token
+```
+
+Replace `YOUR_TOKEN_HERE` with the token from your gateway config (`~/.openclaw/openclaw.json` → `gateway.auth.token` on the VPS).
+
+**Verify:**
+
+```bash
+ocb auth
+```
+
+Expected: `"token_status": "present"`. If you see `"not_found"`, the token file path or permissions are wrong.
+
+---
+
+## Step 3: Pair This Device
 
 ```bash
 ocb pair
 ```
 
-This will:
-1. Generate a local Ed25519 device identity (first run only — stored at `~/.config/openclaw-bridge/openclaw-device.json`)
-2. Attempt to connect to the gateway
-3. Return either `"status": "paired"` (already authenticated) or `"status": "pending"` (needs approval)
+This generates a local Ed25519 key pair (first run only) and registers the device with the gateway. You'll get back either:
 
-If the status is `"pending"`, tell the user:
+- `"status": "paired"` — already done, proceed
+- `"status": "pending"` — needs approval on the VPS
 
-> "Your device needs approval on the OpenClaw gateway. Please run these commands on your VPS:
-> ```bash
-> openclaw devices list        # Find the pending request — note the request ID
-> openclaw devices approve <request-id>
-> ```
-> Then let me know when you've approved it."
+If pending, run this on your VPS:
 
-After the user approves, verify the pairing:
+```bash
+openclaw devices list          # find the pending request ID
+openclaw devices approve <id>
+```
+
+After approval, confirm the pairing worked:
+
 ```bash
 ocb chat --agent main -m "ping"
 ```
 
-Expected: a JSON response with a `"text"` field containing the agent's reply. The device token is captured automatically — you will not need to do anything else for auth.
+Expected: a JSON response with a `"text"` field. The device token is captured automatically.
 
 ---
 
-## Step 3: Verify End-to-End
-
-Run these checks in order:
+## Step 4: Verify the Connection
 
 ```bash
-# 1. Auth state
-ocb auth status
-# Expect: identity_status=loaded, token_status=present
-
-# 2. Gateway reachable
+# Gateway reachable
 ocb status
-# Expect: up=true
 
-# 3. Agent communication
-ocb chat --agent main -m "Connection test from Claude Code. Confirm receipt."
-# Expect: text response from the remote agent
-
-# 4. Session continuity
+# Full end-to-end test
 ocb conversation new --agent main
-# Note the thread_id in the response
-ocb conversation send --thread <thread-id> -m "Remember this value: 9281"
-ocb conversation send --thread <thread-id> -m "What value did I give you?"
-# Expect: "9281" in the response
+# Note the thread_id
+ocb send <thread-prefix> -m "Remember this value: 9281"
+ocb send <thread-prefix> -m "What value did I give you?"
+# Expected response: "9281"
 ```
 
-If all four checks pass, the bridge is fully operational.
+If all checks pass, the bridge is operational.
 
 ---
 
-## Step 4: Install the /openclaw Skill
+## Optional: MCP Channel Server
 
-Create the Claude Code commands directory and skill file:
+Connect `ocb` to Claude Code as an MCP server. This lets Aria's responses arrive as `<channel>` events inside your Claude Code session.
+
+**Register once:**
 
 ```bash
-mkdir -p ~/.claude/commands
+claude mcp add -s user ocb -- ocb mcp
 ```
 
-Write the following content to `~/.claude/commands/openclaw.md`:
+**Start a session with the channel active:**
 
-```markdown
-# /openclaw
-
-Connect to your OpenClaw gateway and start a three-party conversation session.
-
-## Steps
-
-1. Check gateway health:
-   ```bash
-   ocb status
-   ```
-   If the result shows `"up": false` or returns an error, notify the user and stop. The gateway must be reachable before proceeding.
-
-2. List existing conversation threads:
-   ```bash
-   ocb conversation list
-   ```
-   If an active thread exists for the target agent, resume it. Otherwise create a new one:
-   ```bash
-   ocb conversation new --agent main
-   ```
-   Note the returned `thread_id`.
-
-3. Send an opening message:
-   ```bash
-   ocb send <thread-prefix> -m "Connected. Working on: {context}. What's your current state?"
-   ```
-   Replace `{context}` with a brief description of what you're working on.
-
-4. Tell the user about the TUI (optional):
-   > "To watch this conversation live, open another terminal and run:
-   > `ocb tui --thread <thread-id>`
-   >
-   > The TUI shows messages in real-time and lets you type into the conversation.
-   > Your messages appear in green, mine in cyan, and the remote agent in magenta."
-
-5. Start monitoring the thread:
-   Check for new messages every 30 seconds:
-   ```bash
-   ocb conversation history <thread-id> --last 3
-   ```
-   Inspect the most recent messages. Decide whether to respond:
-   - If the remote agent addressed you or is waiting for input: respond with `ocb send <thread-prefix> -m "your response"`
-   - If the user typed a message in the TUI (source: "tui"): respond appropriately
-   - If nothing requires a response: skip (silence is valid)
-
-6. Report ready to the user:
-   ```
-   OpenClaw session active.
-
-   Gateway: {status from ocb status}
-   Thread: {thread-id}
-   Agent: {summary of agent's opening response}
-
-   Monitoring thread every 30s. To watch live:
-     ocb tui --thread {thread-id}
-   ```
-
-## Three-Party Conversations
-
-When the user opens the TUI and types messages:
-- Their messages appear as `source: "tui"` in the JSONL (green in TUI)
-- Your messages appear as `source: "cli"` (cyan in TUI)
-- Remote agent responses appear as `role: "assistant"` (magenta in TUI)
-
-Messages are prefixed on the wire: `[User]` for TUI messages, `[Claude Code]` for CLI messages. The remote agent can distinguish who is talking.
-
-## Commands Reference
-
-| Command | Purpose |
-|---------|---------|
-| `ocb send <prefix> -m "..."` | Send to a conversation thread by ID prefix |
-| `ocb chat --agent <id> -m "..."` | Quick one-off message (no thread) |
-| `ocb status` | Gateway health check |
-| `ocb agents` | List active agent sessions |
-| `ocb conversation list` | List all threads |
-| `ocb conversation new --agent <id>` | Create new thread |
-| `ocb conversation history <id> --last N` | Read recent messages |
-| `ocb spawn --agent <id> -m "..."` | Fire-and-forget task via SSH |
-| `ocb tui --thread <id>` | Launch TUI viewer |
-
-## Output Flags
-
-- Default: compact JSON
-- `--bare`: raw text only (useful for reading responses directly)
-- `--max-chars N`: truncate long responses with a signal
-- `--stream`: print streaming deltas to stderr
-
-## When to Use This Skill
-
-- Coordinating with a remote OpenClaw agent on a shared task
-- Delegating work to remote specialized agents
-- Three-party conversations with the user via TUI
-- Checking status of remote infrastructure or agent state
-- Any cross-machine AI coordination that requires persistent context
+```bash
+claude --dangerously-load-development-channels server:ocb
 ```
 
-**Verification:** Run `/openclaw` in Claude Code. The skill should load and begin the connection sequence.
+This is a research preview — the `--dangerously-load-development-channels` flag is required.
+
+> **Note:** Requires v0.2.0 or a source build with `--features mcp`. Not available in v0.1.0 binaries.
 
 ---
 
-## Setup Complete
+## Optional: Shell Aliases
 
-Display this to the user after all steps pass:
+Shorthand for common patterns:
 
-```
-OpenClaw Bridge configured!
+```bash
+# Add to ~/.zshrc or ~/.bashrc
 
-Your Claude Code agent can now communicate with your OpenClaw gateway.
+# Quick alias for the claude-bridge workflow
+alias claude-bridge='claude --dangerously-load-development-channels server:ocb'
 
-Quick start:
-- Type /openclaw to start a conversation session
-- Your agent will connect, create a thread, and start communicating
-
-What /openclaw does:
-- Connects to your OpenClaw gateway
-- Creates or resumes a shared conversation thread
-- Checks the thread every 30s for new messages
-- Responds when addressed or when input is needed
-
-TUI viewer (optional):
-- Open a second terminal and run: ocb tui --thread <id>
-- Watch the conversation in real-time
-  - Green: your messages (typed in TUI)
-  - Cyan: Claude Code messages
-  - Magenta: remote agent responses
-
-Available commands:
-- ocb send <thread-prefix> -m "message"   send to a conversation thread
-- ocb chat --agent main -m "message"      quick one-off message
-- ocb status                              gateway health check
-- ocb agents                              list active sessions
-- ocb conversation list                   list all threads
-- ocb tui                                 launch the TUI viewer
+# Send to the most recently active thread
+alias ocb-send='ocb send'
 ```
 
 ---
@@ -260,10 +139,10 @@ Available commands:
 
 | Error | Code | Resolution |
 |-------|------|------------|
-| Gateway unreachable | `GATEWAY_UNREACHABLE` | Check `OPENCLAW_HOST` and that the gateway is running |
+| Gateway unreachable | `GATEWAY_UNREACHABLE` | Check `OPENCLAW_HOST` and confirm the gateway is running |
 | Token missing | `TOKEN_MISSING` | Write token to `~/.config/openclaw-bridge/gateway-token` |
 | Pairing required | `PAIRING_REQUIRED` | Run `ocb pair`, then approve on VPS: `openclaw devices approve <id>` |
 | Identity mismatch | `IDENTITY_MISMATCH` | Run `ocb auth reset` then `ocb pair` again |
-| SSH error | `SSH_ERROR` | Verify SSH access: `ssh <user>@<host> openclaw --version` |
+| SSH error | `SSH_ERROR` | Verify SSH access: `ssh openclaw openclaw --version` |
 
 All errors are JSON on stderr with `error`, `code`, and `hint` fields.

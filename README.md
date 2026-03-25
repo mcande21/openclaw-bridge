@@ -1,10 +1,6 @@
 # openclaw-bridge
 
-A CLI bridge that connects [Claude Code](https://docs.anthropic.com/en/docs/claude-code) to [OpenClaw](https://openclaw.ai) gateways. Your local AI agent communicates with your remote AI gateway over a persistent, authenticated WebSocket connection.
-
-## What It Does
-
-`openclaw-bridge` (binary: `ocb`) handles device authentication (Ed25519), session continuity, and conversation persistence so Claude Code agents can have stateful back-and-forth conversations with a remote OpenClaw gateway.
+CLI bridge connecting local [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions to [OpenClaw](https://openclaw.ai) gateways. Binary name: `ocb`.
 
 ```
 Your Machine                          Your VPS
@@ -12,104 +8,154 @@ Your Machine                          Your VPS
 |   Claude Code    |<-------------->|   OpenClaw   |
 |                  |   ocb bridge   |   Gateway    |
 |                  |   Ed25519 auth |              |
-|                  |   session_key  |              |
-+------------------+                +--------------+
++------------------+   session_key  +--------------+
 ```
 
-Designed for AI agent consumption — all output is compact JSON unless otherwise specified.
+## Features
 
-**AI Agents:** To set up this bridge, read [INSTALL.md](INSTALL.md).
+**CLI mode** — short-lived commands for one-shot messages, conversation management, and gateway operations. Compact JSON output by default, designed for agent consumption.
 
-## Key Features
+**TUI mode** — interactive ratatui terminal UI for real-time conversations. Watch messages arrive live, type responses, and coordinate three-party sessions (you + Claude Code + remote agent) in a single thread.
 
-- **Device pairing** — Ed25519 key pair generated locally on first use, paired with your gateway once
-- **Session continuity** — `session_key` maintains agent context across separate WebSocket connections
-- **Conversation threads** — JSONL persistence for full conversation history on both sides
-- **Three-party conversations** — human (TUI), Claude Code (CLI), and remote agent all in one thread
-- **TUI viewer** — optional terminal UI for watching conversations in real-time
-- **Streaming** — live response deltas via WebSocket events
-- **SSH + WebSocket** — gateway status and agent spawning via SSH; chat via WebSocket
-
-## Install
-
-### Pre-built binaries (recommended)
-
-Download the binary for your platform from [GitHub Releases](https://github.com/mcande21/openclaw-bridge/releases).
-
-**macOS (universal — runs on both Intel and Apple Silicon):**
-
-```bash
-curl -sL https://github.com/mcande21/openclaw-bridge/releases/latest/download/openclaw-bridge-0.1.0-universal-apple-darwin.tar.xz \
-  | tar -xJ && sudo mv ocb /usr/local/bin/
-```
-
-Check the [releases page](https://github.com/mcande21/openclaw-bridge/releases) for the current version number and other platform downloads (Linux x86_64, Linux aarch64).
-
-### From source (contributors)
-
-```bash
-cargo install --git https://github.com/mcande21/openclaw-bridge --features cli
-```
+**MCP Channel Server** — long-lived MCP server that pushes OpenClaw messages directly into Claude Code sessions as `<channel>` events. Exposes `reply` and `channel_history` tools. Research preview.
 
 ## Quick Start
 
 ```bash
-# Set your gateway token
-export OPENCLAW_TOKEN="your-gateway-auth-token"
-export OPENCLAW_HOST="your-gateway-host"
+# Install (macOS)
+brew tap mcande21/tap && brew install openclaw-bridge
 
-# Pair this device (first time only)
+# Configure
+export OPENCLAW_HOST="your-gateway-host"
 ocb pair
-# Approve on your VPS: openclaw devices approve <id>
+# Approve on VPS: openclaw devices approve <id>
+
+# Verify
+ocb status
 
 # Send a message
 ocb chat --agent main -m "What's the status?"
-
-# Create a persistent conversation thread
-ocb conversation new --agent main
-ocb conversation send --thread <id> -m "Remember the value 42"
-ocb conversation send --thread <id> -m "What value did I give you?"
-# -> "42."
-
-# Check gateway health
-ocb status
-
-# Watch TUI (optional, second terminal)
-ocb tui
 ```
+
+See [INSTALL.md](INSTALL.md) and [SETUP.md](SETUP.md) for full setup instructions.
+
+## Installation
+
+| Method | Command |
+|--------|---------|
+| Homebrew (macOS) | `brew tap mcande21/tap && brew install openclaw-bridge` |
+| Pre-built binary | Download from [GitHub Releases](https://github.com/mcande21/openclaw-bridge/releases) |
+| Source (contributors) | `cargo install --path . --features cli,tui,mcp` |
+
+See [INSTALL.md](INSTALL.md) for platform-specific binary instructions and feature flags.
+
+## Usage
+
+### CLI
+
+```bash
+# One-shot message
+ocb chat --agent main -m "Summarize current state"
+
+# Persistent conversation thread
+ocb conversation new --agent main
+ocb send <thread-prefix> -m "Remember the value 42"
+ocb send <thread-prefix> -m "What value did I give you?"
+
+# Fire-and-forget task dispatch
+ocb spawn --agent main --task "Run the nightly report"
+
+# Gateway health
+ocb status
+ocb agents
+```
+
+### TUI
+
+```bash
+# Open interactive terminal UI on a thread
+ocb tui --thread <thread-id>
+```
+
+Messages are color-coded: green (you), cyan (Claude Code), magenta (remote agent).
+
+### Watch mode
+
+```bash
+# Stream incoming messages from an agent
+ocb watch --agent main
+```
+
+## MCP Channel Server
+
+`ocb mcp` starts a long-lived MCP server that bridges Claude Code to OpenClaw. Each Claude Code session gets a fresh conversation thread. Aria's responses arrive as `<channel>` events inside your session.
+
+**Register with Claude Code:**
+
+```bash
+claude mcp add -s user ocb -- ocb mcp
+```
+
+**Activate in a session:**
+
+```bash
+claude --dangerously-load-development-channels server:ocb
+```
+
+This is a research preview. The `--dangerously-load-development-channels` flag is required.
+
+> **Note:** MCP support ships in v0.2.0. Pre-built binaries from v0.1.0 do not include `ocb mcp`.
 
 ## Commands
 
 | Command | Purpose | Transport |
 |---------|---------|-----------|
-| `ocb chat --agent <id> -m "..."` | Send message, get response | WebSocket |
-| `ocb spawn --agent <id> -m "..."` | Dispatch autonomous task | SSH |
-| `ocb status` | Gateway health | SSH |
-| `ocb agents` | List active sessions | SSH |
+| `ocb chat --agent <id> -m "..."` | One-shot message, wait for response | WebSocket |
+| `ocb send <thread-prefix> -m "..."` | Send to thread by prefix | WS + Local |
+| `ocb spawn --agent <id> --task "..."` | Fire-and-forget agent dispatch | SSH |
+| `ocb watch --agent <id>` | Stream incoming messages | WebSocket |
+| `ocb status` | Gateway health check | SSH |
+| `ocb agents` | List active agent sessions | SSH |
 | `ocb conversation new --agent <id>` | Create conversation thread | Local |
-| `ocb conversation send -m "..."` | Chat with persistence | WS + Local |
-| `ocb conversation history <id>` | Read message history | Local |
+| `ocb conversation send --thread <id> -m "..."` | Send to thread by ID | WS + Local |
+| `ocb conversation history --thread <id>` | Read thread history | Local |
 | `ocb conversation list` | List all threads | Local |
-| `ocb send <thread-prefix> -m "..."` | Send by thread prefix | WS + Local |
+| `ocb workspace list <agent>` | List agent workspace files | SSH |
+| `ocb workspace read <agent> <file>` | Read workspace file | SSH |
+| `ocb tui --thread <id>` | Interactive terminal UI | WebSocket |
+| `ocb mcp` | Start MCP channel server | WebSocket |
 | `ocb pair` | Pair device with gateway | WebSocket |
-| `ocb auth status` | Show identity and token state | Local |
-| `ocb auth reset` | Clear identity and re-generate | Local |
-| `ocb tui` | Launch TUI viewer | WebSocket |
-| `ocb version` | Show version | Local |
+| `ocb auth` | Device auth status | Local |
 
-## Environment Variables
+## Configuration
+
+**Required:**
+
+| Variable | Purpose |
+|----------|---------|
+| `OPENCLAW_HOST` | Gateway host (Tailscale IP, hostname, or domain) |
+
+**Optional:**
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `OPENCLAW_TOKEN` | Gateway auth token | Required |
-| `OPENCLAW_HOST` | Gateway host | `localhost` (set to your gateway's IP or hostname for remote connections) |
 | `OPENCLAW_PORT` | Gateway WebSocket port | `18789` |
-| `OPENCLAW_WS_HOST` | WS-specific host override | `OPENCLAW_HOST` |
-| `OPENCLAW_SSH_HOST` | SSH host for SSH commands | `openclaw` |
+| `OPENCLAW_WS_HOST` | WebSocket host override | `OPENCLAW_HOST` |
+| `OPENCLAW_SSH_HOST` | SSH host override | `openclaw` |
 
-## Output Flags
+**Config directory:**
 
-All commands produce compact JSON by default (minimal context window usage).
+```
+~/.config/openclaw-bridge/
+├── gateway-token              # Gateway auth token (0600)
+├── openclaw-device.json       # Ed25519 device identity (auto-generated)
+├── openclaw-device-auth.json  # Device token issued after pairing
+└── conversations/
+    ├── threads.json           # Thread index
+    └── <uuid>.jsonl           # Conversation messages
+```
+
+**Output flags** (all commands):
 
 | Flag | Effect |
 |------|--------|
@@ -117,30 +163,8 @@ All commands produce compact JSON by default (minimal context window usage).
 | `--bare` | Raw text only (no JSON envelope) |
 | `--max-chars N` | Truncate response text to N characters |
 | `--full` | Complete unfiltered output |
-| `--stream` | Print streaming deltas to stderr as they arrive |
+| `--stream` | Print streaming deltas to stderr |
 | `-v` | Verbose diagnostic output |
-
-## Configuration Files
-
-```
-~/.config/openclaw-bridge/
-├── gateway-token              # Gateway auth token (user-provided, 0600)
-├── openclaw-device.json       # Ed25519 device identity (generated locally)
-├── openclaw-device-auth.json  # Device token from gateway after pairing
-└── conversations/
-    ├── threads.json           # Thread index
-    └── <uuid>.jsonl           # Conversation messages
-```
-
-## How It Works
-
-1. **Device identity** — First run generates an Ed25519 key pair. Device ID = SHA-256(public_key). Stored at `~/.config/openclaw-bridge/openclaw-device.json`.
-
-2. **Pairing** — `ocb pair` sends the public key to the gateway. An admin approves the request on the VPS. The gateway issues a device token, which `ocb` captures automatically for future connections.
-
-3. **Session continuity** — Conversation threads get a `session_key` (`ocb:<thread-uuid>`) sent on every WebSocket call. The gateway maintains agent context server-side so conversations resume naturally.
-
-4. **Three-party conversations** — The TUI lets the human operator type messages while Claude Code is also connected. Messages are prefixed with `[User]` (TUI) or `[Claude Code]` (CLI) so the remote agent can distinguish who is talking.
 
 ## License
 

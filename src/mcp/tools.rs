@@ -48,6 +48,14 @@ pub fn tool_schemas() -> Vec<Value> {
                 "required": ["message"]
             }
         }),
+        json!({
+            "name": "channel_status",
+            "description": "Check the MCP channel server connection status",
+            "inputSchema": {
+                "type": "object",
+                "properties": {}
+            }
+        }),
     ]
 }
 
@@ -125,6 +133,30 @@ pub fn handle_channel_history(params: &Value, thread_id: &str) -> Value {
             })
         }
     }
+}
+
+/// Handle a `channel_status` tool call.
+///
+/// Returns a JSON snapshot of the current MCP channel state: thread ID,
+/// target agent, WebSocket connection status, and message count.
+pub fn handle_channel_status(thread_id: &str, agent: &str, ws_connected: bool) -> Value {
+    let message_count = conversation::read_thread(thread_id)
+        .map(|msgs| msgs.len())
+        .unwrap_or(0);
+
+    json!({
+        "content": [
+            {
+                "type": "text",
+                "text": serde_json::to_string_pretty(&json!({
+                    "thread_id": thread_id,
+                    "agent": agent,
+                    "ws_connected": ws_connected,
+                    "message_count": message_count,
+                })).unwrap_or_else(|_| "{}".to_string())
+            }
+        ]
+    })
 }
 
 /// Handle a `reply` tool call.

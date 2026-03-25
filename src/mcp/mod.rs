@@ -483,6 +483,11 @@ async fn run_without_ws(
                                 "channel_history" => {
                                     tools::handle_channel_history(&tool_input, thread_id)
                                 }
+                                "channel_status" => {
+                                    let agent_id = std::env::var("OCB_MCP_AGENT")
+                                        .unwrap_or_else(|_| "main".to_string());
+                                    tools::handle_channel_status(thread_id, agent_id.trim(), false)
+                                }
                                 "reply" => {
                                     json!({
                                         "isError": true,
@@ -582,6 +587,15 @@ async fn dispatch_tool_ws(
     match tool_name {
         "channel_history" => {
             let result = tools::handle_channel_history(tool_input, thread_id);
+            Some(json!({
+                "jsonrpc": "2.0",
+                "id": mcp_req_id,
+                "result": result
+            }))
+        }
+
+        "channel_status" => {
+            let result = tools::handle_channel_status(thread_id, agent_id, true);
             Some(json!({
                 "jsonrpc": "2.0",
                 "id": mcp_req_id,

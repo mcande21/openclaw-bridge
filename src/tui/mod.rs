@@ -39,7 +39,7 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend};
 use tokio::sync::mpsc;
 
-use crate::conversation;
+use crate::conversation::{self, find_thread_by_prefix};
 
 use app::{App, ChatMessage, ConnectionStatus, InputMode, WsEvent};
 
@@ -132,11 +132,10 @@ struct ThreadInfo {
 /// - Returns `Ok(None)` if no threads exist yet (TUI shows empty state).
 fn resolve_thread(thread_id: Option<&str>) -> Result<Option<ThreadInfo>, Box<dyn std::error::Error + Send + Sync>> {
     match thread_id {
-        Some(id) => {
-            let threads = conversation::list_threads().unwrap_or_default();
-            let entry = threads.into_iter().find(|t| t.id == id).ok_or_else(|| {
-                format!("thread not found: {id}")
-            })?;
+        Some(prefix) => {
+            let entry = find_thread_by_prefix(prefix)
+                .map_err(|e| format!("failed to look up thread: {e}"))?
+                .ok_or_else(|| format!("thread not found: {prefix}"))?;
             Ok(Some(ThreadInfo {
                 id: entry.id,
                 agent_id: entry.agent_id,

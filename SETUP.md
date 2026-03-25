@@ -6,16 +6,30 @@ Post-install configuration. Gets you from a fresh `ocb` binary to a working gate
 
 ---
 
+## Step 0: Set Up Tailscale (Recommended)
+
+Tailscale is the recommended networking layer. It gives you encrypted, zero-config connectivity between your local machine and VPS without exposing ports to the internet.
+
+1. Install Tailscale on both machines: [tailscale.com/download](https://tailscale.com/download)
+2. Run `tailscale up` on both machines and authenticate
+3. Verify connectivity: `ping <server-tailscale-ip>` (Tailscale IPs start with `100.`)
+
+Your server's Tailscale IP is what you'll use as `OPENCLAW_HOST` in the next step.
+
+If you're not using Tailscale, ensure your gateway is behind a firewall and not publicly accessible — `ocb` connects over plaintext WebSocket.
+
+---
+
 ## Step 1: Set OPENCLAW_HOST
 
 ```bash
-export OPENCLAW_HOST="your-gateway-host"
+export OPENCLAW_HOST="100.x.x.x"  # Your server's Tailscale IP
 ```
 
 This is your OpenClaw gateway's Tailscale IP, hostname, or domain. Add it to your shell profile for persistence:
 
 ```bash
-echo 'export OPENCLAW_HOST="your-gateway-host"' >> ~/.zshrc   # or ~/.bashrc
+echo 'export OPENCLAW_HOST="100.x.x.x"' >> ~/.zshrc   # or ~/.bashrc
 ```
 
 If your SSH commands use a custom host alias, add a stanza to `~/.ssh/config`:

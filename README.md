@@ -2,6 +2,8 @@
 
 CLI bridge connecting local [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions to [OpenClaw](https://openclaw.ai) gateways. Binary name: `ocb`.
 
+`ocb` connects your local Claude Code sessions to an [OpenClaw](https://openclaw.ai) gateway running on a remote server. This lets you coordinate AI agents across machines — run an agent on a VPS that persists 24/7, and talk to it from your laptop through your terminal, Claude Code, or both at once.
+
 ```
 Your Machine                          Your VPS
 +------------------+   WebSocket    +--------------+
@@ -10,6 +12,12 @@ Your Machine                          Your VPS
 |                  |   Ed25519 auth |              |
 +------------------+   session_key  +--------------+
 ```
+
+## Prerequisites
+
+- [Tailscale](https://tailscale.com) installed on both your local machine and gateway server (recommended for secure, zero-config networking)
+- An [OpenClaw](https://openclaw.ai) gateway running on your server
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (for MCP integration)
 
 ## Features
 
@@ -140,8 +148,11 @@ This is a research preview. The `--dangerously-load-development-channels` flag i
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `OPENCLAW_PORT` | Gateway WebSocket port | `18789` |
+| `OPENCLAW_TOKEN` | Gateway auth token (alternative to token file) | See `~/.config/openclaw-bridge/gateway-token` |
 | `OPENCLAW_WS_HOST` | WebSocket host override | `OPENCLAW_HOST` |
 | `OPENCLAW_SSH_HOST` | SSH host override | `openclaw` |
+
+> **Security note:** `ocb` connects over `ws://` (plaintext WebSocket). Tailscale encrypts all traffic between your devices automatically — no TLS configuration needed. If you're not using Tailscale, do not expose your gateway to the public internet.
 
 **Config directory:**
 

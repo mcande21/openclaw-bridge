@@ -1,25 +1,20 @@
 class OpenclawBridge < Formula
   desc "CLI bridge connecting Claude Code to OpenClaw gateways"
   homepage "https://github.com/mcande21/openclaw-bridge"
-  version "0.2.0"
+  version "0.2.1"
 
   on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/mcande21/openclaw-bridge/releases/download/v0.2.0/openclaw-bridge-aarch64-apple-darwin.tar.xz"
-      sha256 "6e78f454fc6bf08f7e7d1b834eb14ea49f21140869908f79e70d86b55f2d5fdf"
-    elsif Hardware::CPU.intel?
-      url "https://github.com/mcande21/openclaw-bridge/releases/download/v0.2.0/openclaw-bridge-x86_64-apple-darwin.tar.xz"
-      sha256 "56a6aa3f8297be9e39198a9f0ca1d26680fbc132f5cd2c334f1ef152ba79d7f5"
-    end
+    url "https://github.com/mcande21/openclaw-bridge/releases/download/v0.2.1/openclaw-bridge-0.2.1-universal-apple-darwin.tar.xz"
+    sha256 "4b385070228daf5a947258c364fe342c5dcb2c290d4f0990b1fdcedcc13aaf33"
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/mcande21/openclaw-bridge/releases/download/v0.2.0/openclaw-bridge-aarch64-unknown-linux-musl.tar.xz"
-      sha256 "ecc00756c4c2f01ac7d50a267ad4cd442ebf86f1f89b4c9134d720dc16c47504"
+      url "https://github.com/mcande21/openclaw-bridge/releases/download/v0.2.1/openclaw-bridge-aarch64-unknown-linux-musl.tar.xz"
+      sha256 "372050fd022cefdeb0bbeb19b0dcb1d4d26f989d9fba7e56c1cd728eb231aa97"
     elsif Hardware::CPU.intel?
-      url "https://github.com/mcande21/openclaw-bridge/releases/download/v0.2.0/openclaw-bridge-x86_64-unknown-linux-musl.tar.xz"
-      sha256 "abb7938b808664f5ea104365edaeb6d87da73a2cdae7dbd2c2c9f059067c8dfb"
+      url "https://github.com/mcande21/openclaw-bridge/releases/download/v0.2.1/openclaw-bridge-x86_64-unknown-linux-musl.tar.xz"
+      sha256 "2efcf659a0839d01f6ba6a4a1abb954954bf78382a04d387ffa88130c9171b72"
     end
   end
 
